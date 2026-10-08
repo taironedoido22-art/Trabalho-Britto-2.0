@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robô Pintor - BLE Control</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1e1e2f; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .container { background: #2a2a40; padding: 30px; border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.3); width: 100%; max-width: 400px; text-align: center; }
+        h2 { margin-top: 0; color: #00d2ff; }
+        .status { margin-bottom: 20px; font-size: 0.9em; padding: 8px; border-radius: 6px; background: #ff4a4a; font-weight: bold; }
+        .status.connected { background: #00d2ff; color: #1e1e2f; }
+        .input-group { margin-bottom: 15px; text-align: left; }
+        label { display: block; margin-bottom: 5px; font-size: 0.9em; color: #aaa; }
+        input { width: 100%; padding: 10px; border: none; border-radius: 6px; background: #1e1e2f; color: #fff; box-sizing: border-box; font-size: 1em; }
+        button { width: 100%; padding: 12px; border: none; border-radius: 6px; background: #00d2ff; color: #1e1e2f; font-size: 1.1em; font-weight: bold; cursor: pointer; transition: background 0.3s; margin-top: 10px; }
+        button:hover { background: #0098cc; }
+        button:disabled { background: #555; cursor: not-allowed; }
+        .btn-connect { background: #4caf50; color: white; margin-bottom: 15px; }
+        .btn-connect:hover { background: #45a049; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Controle Bluetooth</h2>
+    <div id="status" class="status">Desconectado do ESP32</div>
+    
+    <button class="btn-connect" id="btnConectar" onclick="conectarBluetooth()">Conectar ao Robô</button>
+    
+    <div class="input-group">
+        <label for="largura">Largura Total (em passos)</label>
+        <input type="number" id="largura" placeholder="Ex: 12000" min="1">
+    </div>
+    <div class="input-group">
+        <label for="altura">Altura Total (em passos)</label>
+        <input type="number" id="altura" placeholder="Ex: 6000" min="1">
+    </div>
+    
+    <button id="btnEnviar" onclick="enviarDados()" disabled>Enviar Medidas e Iniciar</button>
+</div>
+
+<script>
+    // UUIDs idênticos aos definidos no código do ESP32
+    const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+    const CHARACTERISTIC_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+    
+    let bleCharacteristic;
+
+    async function conectarBluetooth() {
+        try {
+            console.log('Requisitando dispositivo Bluetooth...');
+            const device = await navigator.bluetooth.requestDevice({
+                filters: [{ name: 'RoboPintor_ESP32' }],
+                optionalServices: [SERVICE_UUID]
+            });
+
+            device.addEventListener('gattserverdisconnected', onDisconnected);
+
+            console.log('Conectando ao GATT Server...');
+            const server = await device.gatt.connect();
+
+            console.log('Obtendo Serviço...');
+            const service = await server.getPrimaryService(SERVICE_UUID);
+
+            console.log('Obtendo Característica...');
+            bleCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+
+            document.getElementById("status").textContent = "Conectado via BLE!";
+            document.getElementById("status").className = "status connected";
+            document.getElementById("btnEnviar").disabled = false;
+            document.getElementById("btnConectar").style.display = 'none';
+
+        } catch (error) {
+            console.log('Falha na conexão: ' + error);
+            alert('Erro ao conectar. Certifique-se que o Bluetooth está ligado e o ESP32 está próximo.');
+        }
+    }
+
+    function onDisconnected() {
+        document.getElementById("status").textContent = "Desconectado do ESP32";
+        document.getElementById("status").className = "status";
+        document.getElementById("btnEnviar").disabled = true;
+        document.getElementById("btnConectar").style.display = 'block';
+    }
+
+    async function enviarDados() {
+        if (!bleCharacteristic) return;
+
+        const largura = document.getElementById("largura").value;
+        const altura = document.getElementById("altura").value;
+
+        if(!largura || !altura) {
+            alert("Preencha ambos os campos!");
+            return;
+        }
+
+        const payload = `${largura},${altura}`;
+        
+        try {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(payload);
+            await bleCharacteristic.writeValue(data);
+            alert("Dados enviados com sucesso!\nO robô iniciará o Homing.");
+        } catch (error) {
+            console.log('Erro ao enviar: ', error);
+            alert('Falha ao enviar os dados.');
+        }
+    }
+</script>
+</body>
+</html>
